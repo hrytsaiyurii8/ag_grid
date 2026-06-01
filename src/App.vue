@@ -8,7 +8,8 @@ const mode = ref<'demo' | 'dynamic'>('dynamic')
 
 <template>
   <div class="app-shell">
-    <DynamicGridExample v-if="mode === 'dynamic'" />
+    <PerformanceGrid v-if="mode === 'demo'" />
+    <DynamicGridExample v-else />
   </div>
 </template>
 <style scoped>

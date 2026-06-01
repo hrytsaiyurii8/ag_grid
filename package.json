@@ -4,19 +4,35 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "npm run free-port && concurrently -n api,web -c green,blue \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:web": "wait-on http://localhost:3001/api/health -t 60000 && vite",
+    "dev:api": "tsx watch server/index.ts",
+    "free-port": "node scripts/free-port.mjs 3001",
+    "seed": "tsx server/seed.ts --force",
+    "seed:verify": "tsx server/verify.ts",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test:api": "tsx scripts/test-rows.mjs"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@vitejs/plugin-vue": "^6.0.7",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.21.0",
     "typescript": "~6.0.2",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "wait-on": "^9.0.10"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.98.0",
     "ag-grid-community": "^35.3.0",
     "ag-grid-enterprise": "^35.3.0",
     "ag-grid-vue3": "^35.3.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
     "vue": "^3.5.35"
   }
 }

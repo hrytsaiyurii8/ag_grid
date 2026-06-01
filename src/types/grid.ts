@@ -73,4 +73,22 @@ export type DynamicAgGridProps = {
   paginationPageSizeSelector?: number[]
   toolbar?: DynamicGridToolbar
   themeOverride?: Theme
+  /**
+   * Use AG Grid Server-Side Row Model — loads blocks from `tableId` via API
+   * instead of passing all rows in `rowData`.
+   */
+  serverSide?: boolean
+  /** Required when `serverSide` is true — backend table identifier */
+  tableId?: string
+  /**
+   * Rows per server request. With server-side + pagination, set equal to
+   * `paginationPageSize` so AG Grid fetches exactly one page per request.
+   */
+  cacheBlockSize?: number
+  /** Keep low (e.g. 1) with server-side pagination to avoid extra cached pages */
+  maxBlocksInCache?: number
+  /** Use AG Grid pagination UI with server-side row model (recommended for 1000+ rows) */
+  serverSidePagination?: boolean
+  /** Total rows in DB — sets SSRM row count so pagination shows correctly */
+  serverRowCount?: number
 }

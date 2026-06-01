@@ -31,9 +31,70 @@ class LoadingOverlayComponent implements ILoadingOverlayComp {
   }
 }
 
+function applyExampleColumnState(api: GridApi) {
+  api.setColumnAggFunc('bankBalance', 'avg')
+  api.setColumnAggFunc('rating', 'avg')
+  api.setValueColumns(['bankBalance', 'rating'])
+  api.openToolPanel('columns')
+}
+
 const demoGridOptions: GridOptions = {
   autoGroupColumnDef: autoGroupColDef,
   loadingOverlayComponent: LoadingOverlayComponent,
+  toolbar: {
+    items: [
+      { toolbarItem: 'agRowGroupPanelToolbarItem', alignment: 'left' },
+      { toolbarItem: 'agQuickFilterToolbarItem', alignment: 'right' },
+    ],
+  },
+  sideBar: {
+    position: 'right',
+    toolPanels: [
+      {
+        id: 'columns',
+        labelDefault: 'Columns',
+        labelKey: 'columns',
+        iconKey: 'columns',
+        toolPanel: 'agColumnsToolPanel',
+        width: 290,
+        toolPanelParams: {
+          suppressRowGroups: false,
+          suppressValues: false,
+          suppressPivots: false,
+          suppressPivotMode: false,
+          suppressColumnFilter: false,
+          suppressColumnSelectAll: false,
+          suppressColumnExpandAll: false,
+          suppressSyncLayoutWithGrid: false,
+        },
+      },
+      {
+        id: 'filters',
+        labelDefault: 'Filters',
+        labelKey: 'filters',
+        iconKey: 'filter',
+        toolPanel: 'agFiltersToolPanel',
+        width: 290,
+      },
+    ],
+    defaultToolPanel: 'columns',
+  },
+  cellSelection: true,
+  enableCharts: true,
+  rowDragManaged: true,
+  rowDragMultiRow: true,
+  rowSelection: {
+    mode: 'multiRow',
+    checkboxes: true,
+    headerCheckbox: true,
+  },
+  groupDefaultExpanded: 0,
+  grandTotalRow: 'bottom',
+  suppressRowClickSelection: false,
+  suppressAggFuncInHeader: true,
+  undoRedoCellEditing: true,
+  undoRedoCellEditingLimit: 50,
+  onFirstDataRendered: ({ api }) => applyExampleColumnState(api),
 }
 
 const DEFAULT_COL_COUNT = largeColCount
@@ -58,6 +119,11 @@ const defaultColDef: ColDef = {
   filter: true,
   floatingFilter: true,
   enableCellChangeFlash: true,
+  sortable: true,
+  resizable: true,
+  enableRowGroup: true,
+  enablePivot: true,
+  enableValue: true,
 }
 
 const gridComponents = {
@@ -174,6 +240,7 @@ function createData(newDataSize: string) {
 
 function onGridReady(api: GridApi) {
   gridApi.value = api
+  applyExampleColumnState(api)
 }
 
 function onDataSizeChange(event: Event) {
@@ -193,6 +260,7 @@ watch(quickFilter, (text) => {
 
 onMounted(() => {
   document.body.classList.add('demo-body')
+  createData(dataSize.value)
 })
 
 onBeforeUnmount(() => {
@@ -203,41 +271,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="page exampleWrapper">
-    <header class="demo-toolbar toolbar">
-      <div class="demo-toolbar__left controls">
-        <div class="demo-field group">
-          <label class="demo-field__label label" for="data-size">Data Size</label>
-          <select
-            id="data-size"
-            class="demo-field__select select"
-            :value="dataSize"
-            @change="onDataSizeChange"
-          >
-            <option v-for="option in dataSizeOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-        </div>
-        <div class="demo-field group">
-          <span class="demo-field__label label">Theme</span>
-          <select class="demo-field__select select" disabled>
-            <option>Quartz</option>
-          </select>
-        </div>
-      </div>
-      <div class="demo-toolbar__right searchGroup">
-        <label class="label" for="global-filter">Filter</label>
-        <input
-          id="global-filter"
-          v-model="quickFilter"
-          class="demo-filter input"
-          type="search"
-          placeholder="Filter..."
-          spellcheck="false"
-        />
-      </div>
-    </header>
-
     <section class="grid-frame gridWrapper">
       <DynamicAgGrid
         :columns="columnDefs"
@@ -248,6 +281,9 @@ onBeforeUnmount(() => {
         :column-types="columnTypes"
         :data-type-definitions="dataTypeDefinitions"
         :components="gridComponents"
+        show-sidebar
+        show-status-bar
+        row-numbers
         height="100%"
         @grid-ready="onGridReady"
       />

@@ -1,87 +1,432 @@
 import { computed, ref, watch } from 'vue'
-import { dynamicTableDatasets } from '../data/dynamicTableDatasets'
+
+import { fetchApiHealth, fetchSeedDatabase, fetchTableList, fetchTableSchema } from '../api/gridApi'
+
 import type { FieldDefinition } from '../types/grid'
 
-export type TableListItem = {
-  id: string
-  title: string
-  description: string
-}
+import type { TableListItem } from '../../shared/api-types'
 
-/**
- * Loads grid schema + rows for a selected table id.
- * Replace `fetchTableFromStore` with your API (e.g. GET /tables/:id/schema + /tables/:id/rows).
- */
-async function fetchTableFromStore(tableId: string): Promise<{
-  fields: FieldDefinition[]
-  rowData: Record<string, unknown>[]
-}> {
-  await new Promise((resolve) => setTimeout(resolve, 180))
+import { MIN_ROWS_PER_TABLE } from '../../shared/constants'
 
-  const dataset = dynamicTableDatasets.find((d) => d.id === tableId)
-  if (!dataset) {
-    throw new Error(`Unknown table: ${tableId}`)
+
+
+export type { TableListItem }
+
+
+
+function normalizeRowCount(rowCount: unknown): number | null {
+
+  if (typeof rowCount === 'number' && Number.isFinite(rowCount)) return rowCount
+
+  if (typeof rowCount === 'string' && rowCount !== '') {
+
+    const n = Number(rowCount)
+
+    if (Number.isFinite(n)) return n
+
   }
 
-  return {
-    fields: dataset.fields,
-    rowData: dataset.rowData,
-  }
+  return null
+
 }
+
+
+
+function tableHasSelectableData(table: TableListItem): boolean {
+
+  const n = normalizeRowCount(table.rowCount)
+
+  if (n === null) return true
+
+  return n > 0
+
+}
+
+
 
 export function useDynamicTableData(initialTableId?: string) {
-  const tableOptions = computed<TableListItem[]>(() =>
-    dynamicTableDatasets.map(({ id, title, description }) => ({
-      id,
-      title,
-      description,
-    })),
-  )
 
-  const selectedTableId = ref(
-    initialTableId ?? dynamicTableDatasets[0]?.id ?? '',
-  )
+  const tableOptions = ref<TableListItem[]>([])
+
+  const selectedTableId = ref(initialTableId ?? '')
 
   const fields = ref<FieldDefinition[]>([])
-  const rowData = ref<Record<string, unknown>[]>([])
+
+  const totalRowCount = ref(0)
+
   const loading = ref(false)
+
   const error = ref<string | null>(null)
 
+  const seedWarning = ref<string | null>(null)
+
+  const apiConnected = ref(false)
+
+  const databaseReady = ref(false)
+
+  const seeding = ref(false)
+
+
+
+  const tablesWithData = computed(() => tableOptions.value.filter(tableHasSelectableData))
+
+
+
   const selectedTable = computed(() =>
+
     tableOptions.value.find((t) => t.id === selectedTableId.value),
+
   )
 
-  async function loadTable(tableId: string) {
-    if (!tableId) return
 
+
+  const readyForGrid = computed(
+
+    () =>
+
+      apiConnected.value &&
+
+      databaseReady.value &&
+
+      !!selectedTableId.value &&
+
+      fields.value.length > 0 &&
+
+      totalRowCount.value > 0,
+
+  )
+
+
+
+  async function ensureBackend(): Promise<boolean> {
+
+    try {
+
+      const health = await fetchApiHealth()
+
+      apiConnected.value = health.ok
+
+      if (!health.ok) {
+
+        error.value =
+
+          health.error ??
+
+          'API is running but cannot reach Supabase. Check .env and run the SQL migrations.'
+
+        return false
+
+      }
+
+      return true
+
+    } catch {
+
+      apiConnected.value = false
+
+      error.value =
+
+        'Cannot reach the backend API. Run npm run dev (starts Vite + Express on port 3001).'
+
+      return false
+
+    }
+
+  }
+
+
+
+  async function applyTableList(allTables: TableListItem[]) {
+
+    tableOptions.value = allTables.map((t) => ({
+
+      ...t,
+
+      rowCount: normalizeRowCount(t.rowCount) ?? 0,
+
+    }))
+
+
+
+    if (!allTables.length) {
+
+      error.value =
+
+        'No tables in database. Click “Seed data” or run migrations + npm run seed.'
+
+      seedWarning.value = null
+
+      databaseReady.value = false
+
+      selectedTableId.value = ''
+
+      return false
+
+    }
+
+
+
+    if (!tablesWithData.value.length) {
+
+      return false
+
+    }
+
+
+
+    error.value = null
+
+    const stillValid = tablesWithData.value.some((t) => t.id === selectedTableId.value)
+
+    if (!stillValid || !selectedTableId.value) {
+
+      selectedTableId.value = tablesWithData.value[0]!.id
+
+    }
+
+    return true
+
+  }
+
+
+
+  async function seedAndReload(): Promise<boolean> {
+
+    seeding.value = true
+
+    error.value = 'Loading demo data…'
+
+    try {
+
+      const result = await fetchSeedDatabase()
+
+      if (!result.ok) {
+
+        error.value =
+
+          'Seed completed but row counts are still low. Run supabase/migrations/002_disable_rls_for_service.sql in Supabase, verify SUPABASE_SERVICE_ROLE_KEY in .env, then click Seed data again.'
+
+        return false
+
+      }
+
+      const allTables = await fetchTableList()
+      const ok = await applyTableList(allTables)
+      if (ok && selectedTableId.value) {
+        await loadTableSchema(selectedTableId.value)
+      }
+      return ok
+    } catch (e) {
+      error.value =
+        (e instanceof Error ? e.message : 'Seed failed') +
+        ' — use the service_role key in .env and run migration 002 in Supabase SQL editor.'
+      return false
+    } finally {
+      seeding.value = false
+    }
+  }
+
+
+
+  async function loadTableList() {
     loading.value = true
     error.value = null
 
     try {
-      const result = await fetchTableFromStore(tableId)
-      fields.value = result.fields
-      rowData.value = result.rowData
+      if (!(await ensureBackend())) return
+
+      let allTables = await fetchTableList()
+
+
+
+      if (allTables.length > 0 && allTables.every((t) => (normalizeRowCount(t.rowCount) ?? 0) === 0)) {
+
+        const seeded = await seedAndReload()
+
+        if (!seeded) return
+
+        allTables = tableOptions.value
+
+      }
+
+
+
+      const ok = await applyTableList(allTables)
+
+      if (!ok && allTables.length > 0) {
+
+        error.value =
+
+          'Tables exist but have no rows. Click “Seed data” (check API terminal for errors).'
+
+      }
+
     } catch (e) {
-      fields.value = []
-      rowData.value = []
-      error.value = e instanceof Error ? e.message : 'Failed to load table data'
+
+      error.value = e instanceof Error ? e.message : 'Failed to load table list'
+
+      databaseReady.value = false
     } finally {
       loading.value = false
+
     }
+
   }
+
+
+
+  let schemaRequestId = 0
+
+
+
+  async function loadTableSchema(tableId: string) {
+
+    if (!tableId) return
+
+    if (!(await ensureBackend())) return
+
+
+
+    const requestId = ++schemaRequestId
+
+    loading.value = true
+
+    error.value = null
+
+    seedWarning.value = null
+
+
+
+    try {
+
+      const schema = await fetchTableSchema(tableId)
+
+      if (requestId !== schemaRequestId || selectedTableId.value !== tableId) return
+
+
+
+      fields.value = schema.fields
+
+      totalRowCount.value = schema.rowCount
+
+
+
+      const listEntry = tableOptions.value.find((t) => t.id === tableId)
+
+      if (listEntry) listEntry.rowCount = schema.rowCount
+
+
+
+      if (schema.rowCount <= 0) {
+
+        databaseReady.value = false
+
+        error.value = `Table "${tableId}" has no rows. Click “Seed data” to load demo rows.`
+
+        fields.value = []
+
+        return
+
+      }
+
+
+
+      databaseReady.value = true
+
+      error.value = null
+
+
+
+      if (schema.rowCount < MIN_ROWS_PER_TABLE) {
+
+        seedWarning.value = `This table has ${schema.rowCount.toLocaleString()} rows (recommended: ${MIN_ROWS_PER_TABLE}+). Click “Seed data” for a full dataset.`
+
+      }
+
+    } catch (e) {
+
+      if (requestId !== schemaRequestId) return
+
+      fields.value = []
+
+      totalRowCount.value = 0
+
+      databaseReady.value = false
+
+      error.value = e instanceof Error ? e.message : 'Failed to load table schema'
+
+    } finally {
+
+      if (requestId === schemaRequestId) {
+
+        loading.value = false
+
+      }
+
+    }
+
+  }
+
+
+
+  async function reload() {
+
+    await loadTableList()
+
+    if (selectedTableId.value) await loadTableSchema(selectedTableId.value)
+
+  }
+
+
 
   watch(selectedTableId, (id) => {
-    loadTable(id)
-  }, { immediate: true })
+
+    if (id) loadTableSchema(id)
+
+  })
+
+
+
+  loadTableList()
+
+
 
   return {
+
     tableOptions,
+
+    tablesWithData,
+
     selectedTableId,
+
     selectedTable,
+
     fields,
-    rowData,
+
+    totalRowCount,
+
     loading,
+
     error,
-    loadTable,
+
+    seedWarning,
+
+    seeding,
+
+    apiConnected,
+
+    databaseReady,
+
+    readyForGrid,
+
+    reload,
+
+    seedAndReload,
+
+    loadTableSchema,
+
   }
+
 }
+
+
