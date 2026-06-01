@@ -6,19 +6,23 @@ import type {
 } from '../../shared/api-types'
 
 /**
- * Dev: call Express on :3001 directly (avoids Vite proxy 404 when only `vite` runs or proxy fails).
- * Prod: same-origin `/api` or set VITE_API_BASE.
+ * Dev: call Express on localhost:8080. Some forwarded browser URLs use a
+ * 172.x host for Vite, but the API still lives on localhost on this machine.
+ * Prod/custom tunnels can set VITE_API_BASE.
  */
-const API_BASE =
-  import.meta.env.VITE_API_BASE ??
-  (import.meta.env.DEV ? 'http://localhost:3001' : '')
+function resolveApiBase(): string {
+  if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE
+  return import.meta.env.DEV ? 'http://localhost:8080' : ''
+}
+
+const API_BASE = resolveApiBase()
 
 async function parseJson<T>(response: Response): Promise<T> {
   const text = await response.text()
   if (!response.ok) {
     if (text.includes('Cannot POST /api/seed') || text.includes('Cannot GET /api')) {
       throw new Error(
-        'API route not found. Stop all terminals and run npm run dev (starts Express on port 3001 + Vite).',
+        'API route not found. Stop all terminals and run npm run dev (starts Express on port 8080 + Vite).',
       )
     }
     try {
@@ -47,7 +51,7 @@ export async function fetchApiHealth(): Promise<HealthResponse> {
   )
   if (health.ok && health.apiVersion !== 3) {
     throw new Error(
-      'Wrong API is running on port 3001 (outdated server without seed). Run: npm run free-port && npm run dev',
+      'Wrong API is running on port 8080 (outdated server without seed). Run: npm run free-port && npm run dev',
     )
   }
   return health
@@ -64,12 +68,13 @@ export type SeedResponse = {
 }
 
 export async function fetchSeedDatabase(): Promise<SeedResponse> {
-  const opts = { method: 'POST' as const, headers: { Accept: 'application/json' } }
-  let response = await fetch(`${API_BASE}/api/seed`, opts)
-  if (response.status === 404) {
-    response = await fetch(`${API_BASE}/api/seed`, { method: 'GET', headers: opts.headers })
-  }
-  return parseJson(response)
+  return parseJson(
+    await fetch(`${API_BASE}/api/seed`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    }),
+  )
 }
 
 export async function fetchTableSchema(tableId: string): Promise<TableSchemaResponse> {

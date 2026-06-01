@@ -126,7 +126,7 @@ export function useDynamicTableData(initialTableId?: string) {
 
       error.value =
 
-        'Cannot reach the backend API. Run npm run dev (starts Vite + Express on port 3001).'
+        'Cannot reach the backend API. Run npm run dev (starts Vite + Express on port 8080).'
 
       return false
 
@@ -219,7 +219,7 @@ export function useDynamicTableData(initialTableId?: string) {
     } catch (e) {
       error.value =
         (e instanceof Error ? e.message : 'Seed failed') +
-        ' — use the service_role key in .env and run migration 002 in Supabase SQL editor.'
+        ' — verify the deployed /api/seed route, Supabase migrations, and service_role key.'
       return false
     } finally {
       seeding.value = false

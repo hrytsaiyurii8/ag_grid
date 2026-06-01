@@ -57,8 +57,7 @@ apiRouter.get('/health', async (_req, res) => {
   }
 })
 
-apiRouter.get('/seed', handleSeed)
-apiRouter.post('/seed', handleSeed)
+apiRouter.all('/seed', handleSeed)
 
 apiRouter.get('/tables', async (_req, res) => {
   try {
